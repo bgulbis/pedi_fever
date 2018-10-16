@@ -1,0 +1,36 @@
+---
+title: "Duplicate Antipyretics"
+author: "Genene Wilson, Shannan Eades"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Inclusion Criteria
+* Patients < 18 years of age who are admitted to Children’s Memorial Hermann Hospital from January 1, 2016 to December 31, 2017 with concomitant orders for acetaminophen and ibuprofen as needed for fever
+
+## Exclusion Criteria
+* Patients with orders for scheduled doses of both acetaminophen and ibuprofen 
+* Patients admitted to the Pediatric Intensive Care Unit or Neonatal Intensive Care Unit at the time duplicate orders are placed for acetaminophen and ibuprofen as needed for fever 
+
+## Data Collection Points
+
+1. Age (years)
+1. Height (cm)
+1. Weight (kg)
+1. Gender
+1. Unit (patient’s location at time duplicate antipyretic orders are profiled on the electronic medication administration record)
+1. Measures of liver function (two measures; closest to time duplicate orders placed until orders are discontinued or 5 days of data collection)
+    a. aspartate transaminase
+    a. alanine aminotransferase
+    a. total bilirubin
+    a. direct bilirubin 
+1. Measures of renal function (two measures; closest to time duplicate orders placed until orders are discontinued or 5 days of data collection)
+    a. serum creatinine
+    a. blood urea nitrogen
+    a. creatinine clearance
+    a. urinary output
+1. Antipyretic medication details (drug name, dose, route, frequency, administration times)
+1. Temperatures (all documented temperatures from the time duplicate antipyretics were profiled on patient’s medication administration record until 5 days after)
