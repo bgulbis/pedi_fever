@@ -96,7 +96,58 @@ excl_icu <- overlap %>%
     select(-contains("interval")) %>%
     filter(icu.overlap) 
 
+# exclude scheduled doses ------------------------------
+
+sched_meds <- read_data(dir_raw, "order-details", FALSE) %>%
+    as.order_detail(
+        extras = c("order.dc.datetime" = "Date and Time - Discontinue Effective")
+    ) %>%
+    filter(
+        prn != "PRN",
+        !is.na(order.dc.datetime)
+    ) %>%
+    format_dates("order.dc.datetime")
+
+sched_apap <- sched_meds %>%
+    filter(order == "acetaminophen") %>%
+    select(
+        millennium.id,
+        apap = order,
+        apap.start = order.datetime,
+        apap.stop = order.dc.datetime
+    ) 
+
+sched_ibup <- sched_meds %>%
+    filter(order == "ibuprofen") %>%
+    select(
+        millennium.id,
+        ibup = order,
+        ibup.start = order.datetime,
+        ibup.stop = order.dc.datetime
+    ) 
+
+excl_sched <- sched_apap %>%
+    inner_join(sched_ibup, by = "millennium.id") %>%
+    mutate(
+        apap.interval = interval(apap.start, apap.stop),
+        ibup.interval = interval(ibup.start, ibup.stop),
+        overlap = int_overlaps(apap.interval, ibup.interval)
+    ) %>%
+    select(
+        -apap.interval,
+        -ibup.interval
+    ) %>%
+    filter(overlap) 
+
+# include patients -------------------------------------
+
 include <- overlap %>%
-    anti_join(excl_icu, by = "millennium.id")
+    anti_join(excl_icu, by = "millennium.id") %>%
+    anti_join(excl_sched, by = "millennium.id") %>%
+    left_join(pts, by = "millennium.id") %>%
+    filter(age < 18) %>%
+    distinct()
 
 mbo_include <- concat_encounters(include$millennium.id)
+
+# x <- distinct(include, millennium.id)
