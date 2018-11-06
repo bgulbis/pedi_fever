@@ -24,6 +24,21 @@ mbo_pts <- concat_encounters(pts$millennium.id)
 # 02_order-details -------------------------------------
 #   * Mnemonic (Primary Generic) FILTER ON: acetaminophen;ibuprofen
 
+# vals <- list(
+#         "order.id" = "Order Id",
+#         "order.datetime" = "Date and Time - Original (Placed)",
+#         "order" = "Mnemonic (Primary Generic) FILTER ON",
+#         "route" = "Order Route",
+#         "freq" = "Frequency",
+#         "prn" = "PRN Indicator",
+#         "order.provider" = "Ordering Provider LIMITS",
+#         "order.provider.position" = "Ordering Provider Position LIMITS",
+#         "not.in.list" = "Not In List"
+#     )
+# 
+# y <- vals %in% colnames(orders)
+# t <- rename(orders, !!!vals[y]) 
+    
 orders <- read_data(dir_raw, "order-details", FALSE) %>%
     as.order_detail(
         extras = c("order.dc.datetime" = "Date and Time - Discontinue Effective")
@@ -141,13 +156,112 @@ excl_sched <- sched_apap %>%
 
 # include patients -------------------------------------
 
+set.seed(77123)
 include <- overlap %>%
     anti_join(excl_icu, by = "millennium.id") %>%
     anti_join(excl_sched, by = "millennium.id") %>%
     left_join(pts, by = "millennium.id") %>%
     filter(age < 18) %>%
-    distinct()
+    distinct() %>%
+    sample_n(300)
 
 mbo_include <- concat_encounters(include$millennium.id)
-
+mbo_include
 # x <- distinct(include, millennium.id)
+
+# 04_demographics --------------------------------------
+
+demog <- read_data(dir_raw, "demographics", FALSE) %>%
+    as.demographics()
+
+# 05_labs ----------------------------------------------
+
+labs <- read_data(dir_raw, "labs", FALSE) %>%
+    as.labs() %>%
+    tidy_data() %>%
+    filter(
+        !is.na(lab.result),
+        lab %in% c(
+            "ast",
+            "alt",
+            "bili total",
+            "bili direct",
+            "creatinine lvl",
+            "bun",
+            "egfr"
+        )
+    )
+
+overlap_include <- include %>%
+    semi_join(demog, by = "millennium.id") %>%
+    rowwise() %>%
+    mutate(
+        overlap.start = max(apap.start, ibup.start),
+        overlap.stop = min(apap.stop, ibup.stop)
+    ) %>%
+    select(millennium.id, overlap.start, overlap.stop)
+
+labs_range <- labs %>%
+    left_join(overlap_include, by = "millennium.id") %>%
+    filter(
+        lab.datetime >= overlap.start - days(1),
+        lab.datetime <= overlap.stop
+    ) %>%
+    select(millennium.id:lab.result, overlap.start) %>%
+    distinct() %>%
+    spread(lab, lab.result)
+                
+# 06_medications ---------------------------------------
+
+meds <- read_data(dir_raw, "medications", FALSE) %>%
+    as.meds_inpt() %>%
+    mutate(orig.order.id = order.parent.id) %>%
+    mutate_at("orig.order.id", na_if, y = 0) %>%
+    mutate_at("orig.order.id", funs(coalesce(., order.id)))
+
+meds_prn <- meds %>%
+    rename(route.admin = route) %>%
+    inner_join(
+        orders, 
+        by = c("millennium.id", "orig.order.id" = "order.id")
+    )
+
+# 07_measures ------------------------------------------
+
+measures <- read_data(dir_raw, "measures", FALSE) %>%
+    as.events(order_var = FALSE)
+
+# 08_temperatures --------------------------------------
+
+temps <- read_data(dir_raw, "temp", FALSE) %>%
+    as.vitals() %>%
+    left_join(overlap_include, by = "millennium.id") %>%
+    filter(
+        vital.datetime >= overlap.start,
+        vital.datetime <= overlap.stop + days(5)
+    ) 
+
+# urine_output -----------------------------------------
+
+# run EDW query
+#   * Identifiers - by Millennium Encounter ID
+
+id <- read_data(dir_raw, "identifiers") %>%
+    as.id()
+
+edw_id <- concat_encounters(id$pie.id)
+edw_id
+
+# run EDW query
+#   * Urine Output
+
+uop <- read_data(dir_raw, "uop") %>%
+    as.uop() %>%
+    left_join(id[c("pie.id", "millennium.id")], by = "pie.id") %>%
+    left_join(overlap_include, by = "millennium.id") %>%
+    filter(
+        uop.datetime >= overlap.start - days(1),
+        uop.datetime <= overlap.stop
+    ) %>%
+    select(millennium.id, everything(), -pie.id) %>%
+    filter(uop != "Urine Count")
