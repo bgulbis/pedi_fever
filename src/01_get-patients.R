@@ -299,18 +299,40 @@ order_location <- locations %>%
 
 # select patients --------------------------------------
 
+set.seed(77123)
+pts_labs <- labs_range %>%
+    # full_join(demog["millennium.id"], by = "millennium.id") %>%
+    # inner_join(id, by = "millennium.id") %>%
+    # select(fin, lab.datetime, alt:egfr) %>%
+    filter(
+        !is.na(ast),
+        !is.na(`bili total`),
+        !is.na(`creatinine lvl`)
+    ) %>%
+    distinct(millennium.id) %>%
+    semi_join(demog, by = "millennium.id") %>%
+    semi_join(id, by = "millennium.id") %>%
+    semi_join(order_location, by = "millennium.id") %>%
+    semi_join(meds_prn, by = "millennium.id") %>%
+    semi_join(temps, by = "millennium.id") %>%
+    semi_join(uop, by = "millennium.id") %>%
+    sample_n(300)
+
 data_demographics <- demog %>%
+    semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
     inner_join(order_location, by = "millennium.id") %>%
     left_join(measures, by = "millennium.id") %>%
     select(fin, age, gender, location, height, weight)
 
 data_labs <- labs_range %>%
-    # full_join(demog["millennium.id"], by = "millennium.id") %>%
-    inner_join(id, by = "millennium.id") 
-    # select(fin, lab.datetime, alt:egfr)
+    semi_join(pts_labs, by = "millennium.id") %>%
+    inner_join(id, by = "millennium.id") %>%
+    arrange(millennium.id, lab.datetime) %>%
+    select(fin, lab.datetime, alt:egfr) 
 
 data_meds_admin <- meds_prn %>%
+    semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
     arrange(millennium.id, med.datetime, med) %>%
     select(
@@ -326,11 +348,24 @@ data_meds_admin <- meds_prn %>%
     )
 
 data_temps <- temps %>%
+    semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
     arrange(millennium.id, vital.datetime) %>%
     select(fin, vital.datetime, vital, vital.result)
 
 data_uop <- uop %>%
+    semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
     arrange(millennium.id, uop.datetime) %>%
     select(fin, uop.datetime, uop, uop.result)
+
+data_list <- list(
+    "demographics" = data_demographics,
+    "labs" = data_labs,
+    "meds" = data_meds_admin,
+    "temps" = data_temps,
+    "uop" = data_uop
+)
+
+file = "data/external/pedi_antipyretic_data.xlsx"
+write.xlsx(data_list, file)
