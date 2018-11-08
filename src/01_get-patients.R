@@ -1,11 +1,12 @@
 library(tidyverse)
 library(lubridate)
 library(edwr)
+library(openxlsx)
 
 dir_raw <- "data/raw"
 tz <- "US/Central"
 
-dirr::gzip_files()
+dirr::gzip_files(dir_raw)
 
 # MBO query folder: Resident Projects/pedi_fever
 
@@ -85,11 +86,19 @@ mbo_overlap <- concat_encounters(overlap$millennium.id)
 # 03_locations -----------------------------------------
 
 locations <- read_data(dir_raw, "locations", FALSE) %>%
-    as.locations()
+    as.locations() %>%
+    filter(
+        depart.datetime <= today(tzone = tz),
+        arrive.datetime != depart.datetime
+    ) %>%
+    tidy_data() %>%
+    group_by(millennium.id) %>%
+    arrange(millennium.id, arrive.datetime) %>%
+    mutate(wrong.depart = depart.datetime != lead(arrive.datetime))
 
 icu <- locations %>%
     filter(
-        unit.name %in% c(
+        location %in% c(
             "HC A8N4",
             "HC A8NH",
             "HC NICE",
@@ -156,14 +165,14 @@ excl_sched <- sched_apap %>%
 
 # include patients -------------------------------------
 
-set.seed(77123)
+# set.seed(77123)
 include <- overlap %>%
     anti_join(excl_icu, by = "millennium.id") %>%
     anti_join(excl_sched, by = "millennium.id") %>%
     left_join(pts, by = "millennium.id") %>%
     filter(age < 18) %>%
-    distinct() %>%
-    sample_n(300)
+    distinct() 
+    # sample_n(300)
 
 mbo_include <- concat_encounters(include$millennium.id)
 mbo_include
@@ -175,6 +184,9 @@ demog <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics()
 
 # 05_labs ----------------------------------------------
+
+mbo_labs <- concat_encounters(include$millennium.id, 300)
+mbo_labs
 
 labs <- read_data(dir_raw, "labs", FALSE) %>%
     as.labs() %>%
@@ -199,16 +211,18 @@ overlap_include <- include %>%
         overlap.start = max(apap.start, ibup.start),
         overlap.stop = min(apap.stop, ibup.stop)
     ) %>%
-    select(millennium.id, overlap.start, overlap.stop)
+    select(millennium.id, overlap.start, overlap.stop) %>%
+    distinct(millennium.id, .keep_all = TRUE)
 
 labs_range <- labs %>%
     left_join(overlap_include, by = "millennium.id") %>%
     filter(
         lab.datetime >= overlap.start - days(1),
         lab.datetime <= overlap.stop
+        # lab.datetime <= overlap.stop
     ) %>%
     select(millennium.id:lab.result, overlap.start) %>%
-    distinct() %>%
+    distinct(millennium.id, lab.datetime, lab, .keep_all = TRUE) %>%
     spread(lab, lab.result)
                 
 # 06_medications ---------------------------------------
@@ -229,8 +243,13 @@ meds_prn <- meds %>%
 # 07_measures ------------------------------------------
 
 measures <- read_data(dir_raw, "measures", FALSE) %>%
-    as.events(order_var = FALSE)
-
+    as.events(order_var = FALSE) %>%
+    mutate_at("event.result", as.numeric) %>%
+    arrange(millennium.id, event, desc(event.datetime)) %>%
+    distinct(millennium.id, event, .keep_all = TRUE) %>%
+    select(millennium.id, event, event.result) %>%
+    spread(event, event.result)
+    
 # 08_temperatures --------------------------------------
 
 temps <- read_data(dir_raw, "temp", FALSE) %>%
@@ -265,3 +284,53 @@ uop <- read_data(dir_raw, "uop") %>%
     ) %>%
     select(millennium.id, everything(), -pie.id) %>%
     filter(uop != "Urine Count")
+
+# location ---------------------------------------------
+
+order_location <- locations %>%
+    left_join(overlap_include, by = "millennium.id") %>%
+    filter(
+        overlap.start >= arrive.datetime,
+        overlap.start <= depart.datetime,
+        (!wrong.depart | is.na(wrong.depart))
+    ) %>%
+    select(millennium.id, location) %>%
+    ungroup()
+
+# select patients --------------------------------------
+
+data_demographics <- demog %>%
+    inner_join(id, by = "millennium.id") %>%
+    inner_join(order_location, by = "millennium.id") %>%
+    left_join(measures, by = "millennium.id") %>%
+    select(fin, age, gender, location, height, weight)
+
+data_labs <- labs_range %>%
+    # full_join(demog["millennium.id"], by = "millennium.id") %>%
+    inner_join(id, by = "millennium.id") 
+    # select(fin, lab.datetime, alt:egfr)
+
+data_meds_admin <- meds_prn %>%
+    inner_join(id, by = "millennium.id") %>%
+    arrange(millennium.id, med.datetime, med) %>%
+    select(
+        fin, 
+        med.datetime, 
+        med, 
+        med.dose,
+        med.dose.units, 
+        route.admin, 
+        freq, 
+        prn, 
+        med.location
+    )
+
+data_temps <- temps %>%
+    inner_join(id, by = "millennium.id") %>%
+    arrange(millennium.id, vital.datetime) %>%
+    select(fin, vital.datetime, vital, vital.result)
+
+data_uop <- uop %>%
+    inner_join(id, by = "millennium.id") %>%
+    arrange(millennium.id, uop.datetime) %>%
+    select(fin, uop.datetime, uop, uop.result)
