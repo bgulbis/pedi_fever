@@ -315,8 +315,8 @@ pts_labs <- labs_range %>%
     semi_join(order_location, by = "millennium.id") %>%
     semi_join(meds_prn, by = "millennium.id") %>%
     semi_join(temps, by = "millennium.id") %>%
-    semi_join(uop, by = "millennium.id") %>%
-    sample_n(300)
+    semi_join(uop, by = "millennium.id") 
+    # sample_n(300)
 
 data_demographics <- demog %>%
     semi_join(pts_labs, by = "millennium.id") %>%
