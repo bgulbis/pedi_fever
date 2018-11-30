@@ -16,8 +16,8 @@ dirr::gzip_files(dir_raw)
 #   * Mnemonic (Primary Generic) FILTER ON: acetaminophen;ibuprofen
 #   * Date and Time - Original (Placed): 1/1/2016 - 12/31/2017
 
-pts <- read_data(dir_raw, "find-patients", FALSE) %>%
-    as.patients() %>%
+pts <- read_data2(dir_raw, "find-patients", FALSE) %>%
+    # as.patients() %>%
     filter(discharge.datetime <= mdy("12/31/2017", tz = tz))
 
 mbo_pts <- concat_encounters(pts$millennium.id)
@@ -25,30 +25,11 @@ mbo_pts <- concat_encounters(pts$millennium.id)
 # 02_order-details -------------------------------------
 #   * Mnemonic (Primary Generic) FILTER ON: acetaminophen;ibuprofen
 
-# vals <- list(
-#         "order.id" = "Order Id",
-#         "order.datetime" = "Date and Time - Original (Placed)",
-#         "order" = "Mnemonic (Primary Generic) FILTER ON",
-#         "route" = "Order Route",
-#         "freq" = "Frequency",
-#         "prn" = "PRN Indicator",
-#         "order.provider" = "Ordering Provider LIMITS",
-#         "order.provider.position" = "Ordering Provider Position LIMITS",
-#         "not.in.list" = "Not In List"
-#     )
-# 
-# y <- vals %in% colnames(orders)
-# t <- rename(orders, !!!vals[y]) 
-    
-orders <- read_data(dir_raw, "order-details", FALSE) %>%
-    as.order_detail(
-        extras = c("order.dc.datetime" = "Date and Time - Discontinue Effective")
-    ) %>%
+orders <- read_data2(dir_raw, "order-details", FALSE) %>%
     filter(
         prn == "PRN",
         !is.na(order.dc.datetime)
-    ) %>%
-    format_dates("order.dc.datetime")
+    ) 
 
 apap <- orders %>%
     filter(order == "acetaminophen") %>%
@@ -85,7 +66,7 @@ mbo_overlap <- concat_encounters(overlap$millennium.id)
 
 # 03_locations -----------------------------------------
 
-locations <- read_data(dir_raw, "locations", FALSE) %>%
+locations <- read_data2(dir_raw, "locations", FALSE) %>%
     as.locations() %>%
     filter(
         depart.datetime <= today(tzone = tz),
@@ -122,15 +103,11 @@ excl_icu <- overlap %>%
 
 # exclude scheduled doses ------------------------------
 
-sched_meds <- read_data(dir_raw, "order-details", FALSE) %>%
-    as.order_detail(
-        extras = c("order.dc.datetime" = "Date and Time - Discontinue Effective")
-    ) %>%
+sched_meds <- read_data2(dir_raw, "order-details", FALSE) %>%
     filter(
         prn != "PRN",
         !is.na(order.dc.datetime)
-    ) %>%
-    format_dates("order.dc.datetime")
+    ) 
 
 sched_apap <- sched_meds %>%
     filter(order == "acetaminophen") %>%
@@ -180,15 +157,14 @@ mbo_include
 
 # 04_demographics --------------------------------------
 
-demog <- read_data(dir_raw, "demographics", FALSE) %>%
-    as.demographics()
+demog <- read_data2(dir_raw, "demographics", FALSE) 
 
 # 05_labs ----------------------------------------------
 
 mbo_labs <- concat_encounters(include$millennium.id, 300)
 mbo_labs
 
-labs <- read_data(dir_raw, "labs", FALSE) %>%
+labs <- read_data2(dir_raw, "labs", FALSE) %>%
     as.labs() %>%
     tidy_data() %>%
     filter(
@@ -227,8 +203,8 @@ labs_range <- labs %>%
                 
 # 06_medications ---------------------------------------
 
-meds <- read_data(dir_raw, "medications", FALSE) %>%
-    as.meds_inpt() %>%
+meds <- read_data2(dir_raw, "medications", FALSE) %>%
+    # as.meds_inpt() %>%
     mutate(orig.order.id = order.parent.id) %>%
     mutate_at("orig.order.id", na_if, y = 0) %>%
     mutate_at("orig.order.id", funs(coalesce(., order.id)))
@@ -242,9 +218,7 @@ meds_prn <- meds %>%
 
 # 07_measures ------------------------------------------
 
-measures <- read_data(dir_raw, "measures", FALSE) %>%
-    as.events(order_var = FALSE) %>%
-    mutate_at("event.result", as.numeric) %>%
+measures <- read_data2(dir_raw, "measures", FALSE) %>%
     arrange(millennium.id, event, desc(event.datetime)) %>%
     distinct(millennium.id, event, .keep_all = TRUE) %>%
     select(millennium.id, event, event.result) %>%
@@ -252,12 +226,12 @@ measures <- read_data(dir_raw, "measures", FALSE) %>%
     
 # 08_temperatures --------------------------------------
 
-temps <- read_data(dir_raw, "temp", FALSE) %>%
-    as.vitals() %>%
+temps <- read_data2(dir_raw, "temp", FALSE) %>%
+    # as.vitals() %>%
     left_join(overlap_include, by = "millennium.id") %>%
     filter(
-        vital.datetime >= overlap.start,
-        vital.datetime <= overlap.stop + days(5)
+        event.datetime >= overlap.start,
+        event.datetime <= overlap.stop + days(5)
     ) 
 
 # urine_output -----------------------------------------
@@ -265,8 +239,8 @@ temps <- read_data(dir_raw, "temp", FALSE) %>%
 # run EDW query
 #   * Identifiers - by Millennium Encounter ID
 
-id <- read_data(dir_raw, "identifiers") %>%
-    as.id()
+id <- read_data2(dir_raw, "identifiers") 
+    # as.id()
 
 edw_id <- concat_encounters(id$pie.id)
 edw_id
@@ -274,16 +248,15 @@ edw_id
 # run EDW query
 #   * Urine Output
 
-uop <- read_data(dir_raw, "uop") %>%
-    as.uop() %>%
+uop <- read_data2(dir_raw, "uop") %>%
     left_join(id[c("pie.id", "millennium.id")], by = "pie.id") %>%
     left_join(overlap_include, by = "millennium.id") %>%
     filter(
-        uop.datetime >= overlap.start - days(1),
-        uop.datetime <= overlap.stop
+        event.datetime >= overlap.start - days(1),
+        event.datetime <= overlap.stop
     ) %>%
     select(millennium.id, everything(), -pie.id) %>%
-    filter(uop != "Urine Count")
+    filter(event != "Urine Count")
 
 # location ---------------------------------------------
 
