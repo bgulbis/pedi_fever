@@ -329,6 +329,7 @@ data_meds_admin <- meds_prn %>%
     arrange(millennium.id, med.datetime, med) %>%
     select(
         fin, 
+        order.id,
         med.datetime, 
         med, 
         med.dose,
