@@ -342,19 +342,29 @@ data_meds_admin <- meds_prn %>%
 data_temps <- temps %>%
     semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
-    arrange(millennium.id, vital.datetime) %>%
-    select(fin, vital.datetime, vital, vital.result)
+    arrange(millennium.id, event.datetime) %>%
+    select(
+        fin, 
+        vital.datetime = event.datetime, 
+        vital = event, 
+        vital.result = event.result
+    )
 
 data_uop <- uop %>%
     semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
-    arrange(millennium.id, uop.datetime) %>%
-    select(fin, uop.datetime, uop, uop.result)
+    arrange(millennium.id, event.datetime) %>%
+    select(
+        fin, 
+        uop.datetime = event.datetime, 
+        uop = event, 
+        uop.result = event.result
+    )
 
 data_comments <- df_comments %>%
+    inner_join(orders[c("millennium.id", "order.id", "order")], by = "order.id") %>%
     semi_join(pts_labs, by = "millennium.id") %>%
     inner_join(id, by = "millennium.id") %>%
-    inner_join(orders[c("order.id", "order")], by = "order.id") %>%
     select(fin, order.id, order, order.comment)
 
 data_list <- list(
